@@ -13,7 +13,8 @@ from opacus.accountants import create_accountant
 from opacus.accountants.utils import get_noise_multiplier
 from opacus.data_loader import DPDataLoader, switch_generator
 from opacus.distributed import DifferentiallyPrivateDistributedDataParallel as DPDDP
-#from opacus.grad_sample.grad_sample_module import GradSampleModule
+
+# from opacus.grad_sample.grad_sample_module import GradSampleModule
 from src.opacus_augmented.grad_sample_module_augmented import GradSampleModuleAugmented
 from opacus.optimizers import DPOptimizer, get_optimizer_class
 from opacus.scheduler import _NoiseScheduler
@@ -25,7 +26,9 @@ from torch.utils.data import DataLoader
 
 
 def forbid_accumulation_hook(
-    module: GradSampleModuleAugmented, _grad_input: torch.Tensor, _grad_output: torch.Tensor
+    module: GradSampleModuleAugmented,
+    _grad_input: torch.Tensor,
+    _grad_output: torch.Tensor,
 ):
     """
     Model hook that detects repetitive forward/backward passes between optimizer steps.
@@ -92,7 +95,9 @@ class PrivacyEngineAugmented:
         >>> # continue training as normal
     """
 
-    def __init__(self,GRAD_SAMPLERS, *, accountant: str = "rdp", secure_mode: bool = False):
+    def __init__(
+        self, GRAD_SAMPLERS, *, accountant: str = "rdp", secure_mode: bool = False
+    ):
         """
 
         Args:
@@ -107,8 +112,8 @@ class PrivacyEngineAugmented:
                 When set to ``True`` requires ``torchcsprng`` to be installed
         """
         GradSampleModuleAugmented.GRAD_SAMPLERS = GRAD_SAMPLERS
-        
-        self.GRAD_SAMPLERS=GRAD_SAMPLERS
+
+        self.GRAD_SAMPLERS = GRAD_SAMPLERS
         self.accountant = create_accountant(mechanism=accountant)
         self.secure_mode = secure_mode
         self.secure_rng = None
@@ -220,7 +225,11 @@ class PrivacyEngineAugmented:
             return module
         else:
             ret = GradSampleModuleAugmented(
-                module,self.GRAD_SAMPLERS, batch_first=batch_first, loss_reduction=loss_reduction,K=K
+                module,
+                self.GRAD_SAMPLERS,
+                batch_first=batch_first,
+                loss_reduction=loss_reduction,
+                K=K,
             )
             return ret
 
@@ -355,11 +364,11 @@ class PrivacyEngineAugmented:
                 equivalent to the original data loader, possibly with updated
                 sampling mechanism. Points to the same dataset object.
         """
-  
+
         if noise_generator and self.secure_mode:
             raise ValueError("Passing seed is prohibited in secure mode")
 
-        #compare module parameter with optimizer parameters
+        # compare module parameter with optimizer parameters
         # if not all(
         #     torch.eq(i, j).all()
         #     for i, j in zip(
@@ -377,7 +386,7 @@ class PrivacyEngineAugmented:
         distributed = isinstance(module, (DPDDP, DDP))
 
         module = self._prepare_model(
-            module, batch_first=batch_first, loss_reduction=loss_reduction,K=K
+            module, batch_first=batch_first, loss_reduction=loss_reduction, K=K
         )
 
         if poisson_sampling:

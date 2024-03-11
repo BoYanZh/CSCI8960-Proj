@@ -23,15 +23,17 @@ from opacus.validators import ModuleValidator
 from opacus import PrivacyEngine
 import math
 
-K =16
+K = 16
 B = 2
 
 import sys
+
 sys.path.append("../../src")
 from models.wideresnet import WideResNet
 from models.NFnet import MyScaledStdConv2d, Expand
 from models.augmented_grad_samplers import AugmentationMultiplicity
 import torch.optim as optim
+
 
 class SampleConvNet(nn.Module):
     def __init__(self):
@@ -57,6 +59,7 @@ class SampleConvNet(nn.Module):
     def name(self):
         return "SampleConvNet"
 
+
 class AugmentationMultiplicityTest(unittest.TestCase):
     def setUp(self):
         self.original_model = ModuleValidator.fix(WideResNet(16, 10, 4))
@@ -74,18 +77,18 @@ class AugmentationMultiplicityTest(unittest.TestCase):
         # copy_of_original_model.apply(set_batch_len)
 
         self.grad_sample_module_copy = GradSampleModule(
-            copy_of_original_model, batch_first=True,K=K
+            copy_of_original_model, batch_first=True, K=K
         )
 
-        self.grad_sample_module_copy.GRAD_SAMPLERS[
-            torch.nn.modules.conv.Conv2d
-        ] = self.augmentation.augmented_compute_conv_grad_sample
-        self.grad_sample_module_copy.GRAD_SAMPLERS[
-            torch.nn.modules.linear.Linear
-        ] = self.augmentation.augmented_compute_linear_grad_sample
-        self.grad_sample_module_copy.GRAD_SAMPLERS[
-            nn.GroupNorm
-        ] = self.augmentation.augmented_compute_group_norm_grad_sample
+        self.grad_sample_module_copy.GRAD_SAMPLERS[torch.nn.modules.conv.Conv2d] = (
+            self.augmentation.augmented_compute_conv_grad_sample
+        )
+        self.grad_sample_module_copy.GRAD_SAMPLERS[torch.nn.modules.linear.Linear] = (
+            self.augmentation.augmented_compute_linear_grad_sample
+        )
+        self.grad_sample_module_copy.GRAD_SAMPLERS[nn.GroupNorm] = (
+            self.augmentation.augmented_compute_group_norm_grad_sample
+        )
         self.DATA_SIZE = B
         self.setUp_data()
         self.criterion = nn.L1Loss()
@@ -159,7 +162,8 @@ class AugmentationMultiplicityTest(unittest.TestCase):
         assert all(check_shape)
         params_with_gs_mean = [p.mean(0) for p in params_with_gs_copy]
         check_mean = [
-            torch.allclose(p, q, atol=1e-07) for (p, q) in zip(params_with_gs_mean, params_with_g)
+            torch.allclose(p, q, atol=1e-07)
+            for (p, q) in zip(params_with_gs_mean, params_with_g)
         ]
         assert all(check_mean), "not good"
 
@@ -188,7 +192,9 @@ class AugmentationMultiplicityTest(unittest.TestCase):
         loss1.backward()
         loss2.backward()
 
-        params_with_g = [p.grad for p in self.original_model.parameters() if p.grad is not None]
+        params_with_g = [
+            p.grad for p in self.original_model.parameters() if p.grad is not None
+        ]
         params_with_gs_copy = [
             p.grad_sample
             for p in self.grad_sample_module_copy.parameters()
@@ -211,20 +217,22 @@ class AugmentationMultiplicityTest(unittest.TestCase):
         ]
         assert all(check_shape)
         params_with_gs_mean = [p.mean(0) for p in params_with_gs_copy]
-    
+
         check_mean = [
-            torch.allclose(p, q, atol=1e-06) for (p, q) in zip(params_with_gs_mean, params_with_g)
+            torch.allclose(p, q, atol=1e-06)
+            for (p, q) in zip(params_with_gs_mean, params_with_g)
         ]
         assert all(check_mean), "not good"
+
 
 class SampleConvNet2(nn.Module):
     def __init__(self):
         super().__init__()
         self.conv1 = MyScaledStdConv2d(3, 16, 8, 2, padding=3, bias=False)
-        self.conv2 = MyScaledStdConv2d(16, 32, 4,2)
+        self.conv2 = MyScaledStdConv2d(16, 32, 4, 2)
         self.fc1 = nn.Linear(32 * 6 * 6, 32)
         self.fc2 = nn.Linear(32, 10)
-        self.expand = Expand(torch.tensor(1.))
+        self.expand = Expand(torch.tensor(1.0))
         self.gn = nn.GroupNorm(math.gcd(32, 16), 16)
 
     def forward(self, x):
@@ -235,7 +243,7 @@ class SampleConvNet2(nn.Module):
         x = F.relu(self.conv2(x))  # -> [B, 32, 5, 5] # -> [B, 32, 7, 7]
         x = F.max_pool2d(x, 2, 1)  # -> [B, 32, 4, 4] # -> [B, 32, 6, 6]
         if self.expand:
-            x=x*self.expand(x).unsqueeze(1).unsqueeze(2).unsqueeze(3)
+            x = x * self.expand(x).unsqueeze(1).unsqueeze(2).unsqueeze(3)
         x = x.view(-1, 32 * 6 * 6)  # -> [B, 512]
         x = F.relu(self.fc1(x))  # -> [B, 32]
         x = self.fc2(x)  # -> [B, 10]
@@ -243,6 +251,7 @@ class SampleConvNet2(nn.Module):
 
     def name(self):
         return "SampleConvNet2"
+
 
 class AugmentationMultiplicityTest_expand_WSconv(unittest.TestCase):
     def setUp(self):
@@ -260,21 +269,21 @@ class AugmentationMultiplicityTest_expand_WSconv(unittest.TestCase):
         # copy_of_original_model.apply(set_batch_len)
 
         self.grad_sample_module_copy = GradSampleModule(
-            copy_of_original_model, batch_first=True,K=K
+            copy_of_original_model, batch_first=True, K=K
         )
 
-        self.grad_sample_module_copy.GRAD_SAMPLERS[
-            MyScaledStdConv2d
-        ] = self.augmentation.augmented_compute_wsconv_grad_sample
-        self.grad_sample_module_copy.GRAD_SAMPLERS[
-            torch.nn.modules.linear.Linear
-        ] = self.augmentation.augmented_compute_linear_grad_sample
-        self.grad_sample_module_copy.GRAD_SAMPLERS[
-            nn.GroupNorm
-        ] = self.augmentation.augmented_compute_group_norm_grad_sample
-        self.grad_sample_module_copy.GRAD_SAMPLERS[
-            Expand
-        ] = self.augmentation.augmented_compute_expand_grad_sample
+        self.grad_sample_module_copy.GRAD_SAMPLERS[MyScaledStdConv2d] = (
+            self.augmentation.augmented_compute_wsconv_grad_sample
+        )
+        self.grad_sample_module_copy.GRAD_SAMPLERS[torch.nn.modules.linear.Linear] = (
+            self.augmentation.augmented_compute_linear_grad_sample
+        )
+        self.grad_sample_module_copy.GRAD_SAMPLERS[nn.GroupNorm] = (
+            self.augmentation.augmented_compute_group_norm_grad_sample
+        )
+        self.grad_sample_module_copy.GRAD_SAMPLERS[Expand] = (
+            self.augmentation.augmented_compute_expand_grad_sample
+        )
         self.DATA_SIZE = B
         self.setUp_data()
         self.criterion = nn.L1Loss()
@@ -347,7 +356,8 @@ class AugmentationMultiplicityTest_expand_WSconv(unittest.TestCase):
         assert all(check_shape)
         params_with_gs_mean = [p.mean(0) for p in params_with_gs_copy]
         check_mean = [
-            torch.allclose(p, q, atol=1e-07) for (p, q) in zip(params_with_gs_mean, params_with_g)
+            torch.allclose(p, q, atol=1e-07)
+            for (p, q) in zip(params_with_gs_mean, params_with_g)
         ]
         assert all(check_mean), "not good"
 
@@ -403,7 +413,8 @@ class AugmentationMultiplicityTest_expand_WSconv(unittest.TestCase):
         params_with_gs_mean = [p.mean(0) for p in params_with_gs_copy]
         # import pdb;pdb.set_trace()
         check_mean = [
-            torch.allclose(p, q,atol=1e-7) for (p, q) in zip(params_with_gs_mean, params_with_g)
+            torch.allclose(p, q, atol=1e-7)
+            for (p, q) in zip(params_with_gs_mean, params_with_g)
         ]
         assert all(check_mean), "not good"
 
@@ -449,7 +460,8 @@ class AugmentationMultiplicityTest_expand_WSconv(unittest.TestCase):
         params_with_gs_first = [p[0] for p in params_with_gs_copy]
 
         check_mean = [
-            torch.allclose(p, q,atol=1e-7) for (p, q) in zip(params_with_gs_first, params_with_g)
+            torch.allclose(p, q, atol=1e-7)
+            for (p, q) in zip(params_with_gs_first, params_with_g)
         ]
 
         assert all(check_mean), "not good"
@@ -470,14 +482,16 @@ class AugmentationMultiplicityTest_expand_WSconv(unittest.TestCase):
         optimizer1 = optim.SGD(self.grad_sample_module_copy.parameters(), lr=1)
         optimizer2 = optim.SGD(self.original_model.parameters(), lr=1)
         privacy_engine = PrivacyEngine()
-        self.grad_sample_module_copy, optimizer1, train_loader = privacy_engine.make_private(
-            module=self.grad_sample_module_copy,
-            optimizer=optimizer1,
-            data_loader=self.dl,
-            noise_multiplier=0,
-            max_grad_norm=100000,
-            poisson_sampling=True,
-            K=K
+        self.grad_sample_module_copy, optimizer1, train_loader = (
+            privacy_engine.make_private(
+                module=self.grad_sample_module_copy,
+                optimizer=optimizer1,
+                data_loader=self.dl,
+                noise_multiplier=0,
+                max_grad_norm=100000,
+                poisson_sampling=True,
+                K=K,
+            )
         )
         optimizer1.zero_grad()
         optimizer2.zero_grad()
@@ -495,7 +509,7 @@ class AugmentationMultiplicityTest_expand_WSconv(unittest.TestCase):
         optimizer2.step()
         optimizer1.zero_grad()
         optimizer2.zero_grad()
-        
+
         images, _ = next(iter(self.dl))
         images_duplicates = torch.repeat_interleave(images, repeats=K, dim=0)
         # images_duplicates = transform(images_duplicates) WOULD DO THE SAME TRANSFORM ON EACH IMAGE
@@ -531,10 +545,12 @@ class AugmentationMultiplicityTest_expand_WSconv(unittest.TestCase):
         params_with_gs_first = [p[0] for p in params_with_gs_copy]
 
         check_mean = [
-            torch.allclose(p, q,atol=1e-6) for (p, q) in zip(params_with_gs_first, params_with_g)
+            torch.allclose(p, q, atol=1e-6)
+            for (p, q) in zip(params_with_gs_first, params_with_g)
         ]
 
         assert all(check_mean), "not good"
+
 
 class SampleConvNet3(nn.Module):
     def __init__(self):
@@ -543,7 +559,7 @@ class SampleConvNet3(nn.Module):
         self.conv2 = nn.Conv2d(16, 32, 4, 2)
         self.fc1 = nn.Linear(32 * 4 * 4, 32)
         self.fc2 = nn.Linear(32, 10)
-        self.ln = nn.LayerNorm((13,13))
+        self.ln = nn.LayerNorm((13, 13))
 
     def forward(self, x):
         # x of shape [B, 3, 28, 28]
@@ -560,6 +576,7 @@ class SampleConvNet3(nn.Module):
     def name(self):
         return "SampleConvNet"
 
+
 class AugmentationMultiplicityTest_Layer_norm(unittest.TestCase):
     def setUp(self):
         self.original_model = SampleConvNet3()
@@ -570,18 +587,18 @@ class AugmentationMultiplicityTest_Layer_norm(unittest.TestCase):
         )
 
         self.grad_sample_module_copy = GradSampleModule(
-            copy_of_original_model, batch_first=True,K=K
+            copy_of_original_model, batch_first=True, K=K
         )
 
-        self.grad_sample_module_copy.GRAD_SAMPLERS[
-            torch.nn.modules.conv.Conv2d
-        ] = self.augmentation.augmented_compute_conv_grad_sample
-        self.grad_sample_module_copy.GRAD_SAMPLERS[
-            torch.nn.modules.linear.Linear
-        ] = self.augmentation.augmented_compute_linear_grad_sample
-        self.grad_sample_module_copy.GRAD_SAMPLERS[
-            nn.LayerNorm
-        ] = self.augmentation.augmented_compute_layer_norm_grad_sample
+        self.grad_sample_module_copy.GRAD_SAMPLERS[torch.nn.modules.conv.Conv2d] = (
+            self.augmentation.augmented_compute_conv_grad_sample
+        )
+        self.grad_sample_module_copy.GRAD_SAMPLERS[torch.nn.modules.linear.Linear] = (
+            self.augmentation.augmented_compute_linear_grad_sample
+        )
+        self.grad_sample_module_copy.GRAD_SAMPLERS[nn.LayerNorm] = (
+            self.augmentation.augmented_compute_layer_norm_grad_sample
+        )
         self.DATA_SIZE = B
         self.setUp_data()
         self.criterion = nn.L1Loss()
@@ -654,7 +671,8 @@ class AugmentationMultiplicityTest_Layer_norm(unittest.TestCase):
         assert all(check_shape)
         params_with_gs_mean = [p.mean(0) for p in params_with_gs_copy]
         check_mean = [
-            torch.allclose(p, q, atol=1e-07) for (p, q) in zip(params_with_gs_mean, params_with_g)
+            torch.allclose(p, q, atol=1e-07)
+            for (p, q) in zip(params_with_gs_mean, params_with_g)
         ]
         assert all(check_mean), "not good"
 
@@ -710,7 +728,8 @@ class AugmentationMultiplicityTest_Layer_norm(unittest.TestCase):
         params_with_gs_mean = [p.mean(0) for p in params_with_gs_copy]
         # import pdb;pdb.set_trace()
         check_mean = [
-            torch.allclose(p, q,atol=1e-6) for (p, q) in zip(params_with_gs_mean, params_with_g)
+            torch.allclose(p, q, atol=1e-6)
+            for (p, q) in zip(params_with_gs_mean, params_with_g)
         ]
         assert all(check_mean), "not good"
 
@@ -756,7 +775,8 @@ class AugmentationMultiplicityTest_Layer_norm(unittest.TestCase):
         params_with_gs_first = [p[0] for p in params_with_gs_copy]
 
         check_mean = [
-            torch.allclose(p, q,atol=1e-6) for (p, q) in zip(params_with_gs_first, params_with_g)
+            torch.allclose(p, q, atol=1e-6)
+            for (p, q) in zip(params_with_gs_first, params_with_g)
         ]
 
         assert all(check_mean), "not good"
@@ -777,14 +797,16 @@ class AugmentationMultiplicityTest_Layer_norm(unittest.TestCase):
         optimizer1 = optim.SGD(self.grad_sample_module_copy.parameters(), lr=1)
         optimizer2 = optim.SGD(self.original_model.parameters(), lr=1)
         privacy_engine = PrivacyEngine()
-        self.grad_sample_module_copy, optimizer1, train_loader = privacy_engine.make_private(
-            module=self.grad_sample_module_copy,
-            optimizer=optimizer1,
-            data_loader=self.dl,
-            noise_multiplier=0,
-            max_grad_norm=100000,
-            poisson_sampling=True,
-            K=K
+        self.grad_sample_module_copy, optimizer1, train_loader = (
+            privacy_engine.make_private(
+                module=self.grad_sample_module_copy,
+                optimizer=optimizer1,
+                data_loader=self.dl,
+                noise_multiplier=0,
+                max_grad_norm=100000,
+                poisson_sampling=True,
+                K=K,
+            )
         )
         optimizer1.zero_grad()
         optimizer2.zero_grad()
@@ -802,7 +824,7 @@ class AugmentationMultiplicityTest_Layer_norm(unittest.TestCase):
         optimizer2.step()
         optimizer1.zero_grad()
         optimizer2.zero_grad()
-        
+
         images, _ = next(iter(self.dl))
         images_duplicates = torch.repeat_interleave(images, repeats=K, dim=0)
         # images_duplicates = transform(images_duplicates) WOULD DO THE SAME TRANSFORM ON EACH IMAGE
@@ -838,9 +860,12 @@ class AugmentationMultiplicityTest_Layer_norm(unittest.TestCase):
         params_with_gs_first = [p[0] for p in params_with_gs_copy]
 
         check_mean = [
-            torch.allclose(p, q,atol=1e-6) for (p, q) in zip(params_with_gs_first, params_with_g)
+            torch.allclose(p, q, atol=1e-6)
+            for (p, q) in zip(params_with_gs_first, params_with_g)
         ]
 
         assert all(check_mean), "not good"
+
+
 if __name__ == "__main__":
     unittest.main()

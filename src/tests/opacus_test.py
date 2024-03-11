@@ -22,10 +22,13 @@ from torchvision.models import mobilenet_v3_small
 from opacus.validators import ModuleValidator
 import math
 import sys
+
 sys.path.append("../../src")
 from models.augmented_grad_samplers import AugmentationMultiplicity
-K =1
+
+K = 1
 B = 16
+
 
 class SampleConvNet(nn.Module):
     def __init__(self):
@@ -51,6 +54,7 @@ class SampleConvNet(nn.Module):
     def name(self):
         return "SampleConvNet"
 
+
 class opacusTest(unittest.TestCase):
     def setUp(self):
         self.original_model = SampleConvNet()
@@ -62,7 +66,7 @@ class opacusTest(unittest.TestCase):
         self.grad_sample_module_copy = GradSampleModule(
             copy_of_original_model, batch_first=True
         )
-        
+
         self.DATA_SIZE = B
         self.setUp_data()
         self.criterion = nn.L1Loss()
@@ -85,7 +89,7 @@ class opacusTest(unittest.TestCase):
 
     def test_sum_or_average(self):
         # with randomized transforms
-        #weird error when B=1
+        # weird error when B=1
         images, _ = next(iter(self.dl))
 
         # self.grad_sample_module_copy.max_batch_len = self.DATA_SIZE
@@ -125,9 +129,11 @@ class opacusTest(unittest.TestCase):
         assert all(check_shape)
         params_with_gs_mean = [p.mean(0) for p in params_with_gs_copy]
         check_mean = [
-            torch.allclose(p, q, atol=1e-07) for (p, q) in zip(params_with_gs_mean, params_with_g)
+            torch.allclose(p, q, atol=1e-07)
+            for (p, q) in zip(params_with_gs_mean, params_with_g)
         ]
         assert all(check_mean), "not good"
+
 
 if __name__ == "__main__":
     unittest.main()

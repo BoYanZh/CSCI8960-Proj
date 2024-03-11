@@ -10,9 +10,14 @@ from typing import Dict, Union
 import numpy as np
 import torch
 import torch.nn as nn
-from opacus.utils.tensor_utils import unfold2d, unfold3d, sum_over_all_but_batch_and_last_n
+from opacus.utils.tensor_utils import (
+    unfold2d,
+    unfold3d,
+    sum_over_all_but_batch_and_last_n,
+)
 import torch.nn.functional as F
 from .NFnet import MyScaledStdConv2d, unsqueeze_and_copy, get_standardized_weight
+
 
 class AugmentationMultiplicity:
     def __init__(self, K):
@@ -78,7 +83,12 @@ class AugmentationMultiplicity:
 
         return ret
 
-    def augmented_compute_wsconv_grad_sample(self,layer: MyScaledStdConv2d,activations: torch.Tensor,backprops: torch.Tensor,) -> Dict[nn.Parameter, torch.Tensor]:
+    def augmented_compute_wsconv_grad_sample(
+        self,
+        layer: MyScaledStdConv2d,
+        activations: torch.Tensor,
+        backprops: torch.Tensor,
+    ) -> Dict[nn.Parameter, torch.Tensor]:
         ret = self.augmented_compute_conv_grad_sample(layer, activations, backprops)
         batch_size = activations.shape[0] // self.K
 
@@ -86,21 +96,22 @@ class AugmentationMultiplicity:
             weight_expanded = unsqueeze_and_copy(layer.weight, batch_size)
             gain_expanded = unsqueeze_and_copy(layer.gain, batch_size)
 
-            std_weight = get_standardized_weight(weight = weight_expanded,gain=gain_expanded,eps=layer.eps)
+            std_weight = get_standardized_weight(
+                weight=weight_expanded, gain=gain_expanded, eps=layer.eps
+            )
             std_weight.backward(ret[layer.weight])
-        ret[layer.weight] = weight_expanded.grad.clone() #erased copy?
+        ret[layer.weight] = weight_expanded.grad.clone()  # erased copy?
         ret[layer.gain] = gain_expanded.grad.clone()
 
         return ret
-    def augmented_compute_expand_grad_sample(self,
-        layer,
-        activations,
-        backprops
-    ):
+
+    def augmented_compute_expand_grad_sample(self, layer, activations, backprops):
         """
         Computes per sample gradients for expand layers.
         """
-        return {layer.weight: backprops.reshape((-1,self.K)+(backprops.shape[1:])).sum(1)}
+        return {
+            layer.weight: backprops.reshape((-1, self.K) + (backprops.shape[1:])).sum(1)
+        }
 
     def augmented_compute_linear_grad_sample(
         self, layer: nn.Linear, activations: torch.Tensor, backprops: torch.Tensor
@@ -173,8 +184,8 @@ class AugmentationMultiplicity:
             ret[layer.bias] = torch.einsum("nki...->ni", backprops)
         return ret
 
-
-    def augmented_compute_layer_norm_grad_sample(self,
+    def augmented_compute_layer_norm_grad_sample(
+        self,
         layer: nn.LayerNorm,
         activations: torch.Tensor,
         backprops: torch.Tensor,
@@ -188,14 +199,29 @@ class AugmentationMultiplicity:
         """
         ret = {}
         if layer.weight.requires_grad:
-            normalize_activations = F.layer_norm(activations, layer.normalized_shape, eps=layer.eps)
-            normalize_activations = normalize_activations.reshape((-1,self.K,)+ (activations.shape[1:]))
-            backprops = backprops.reshape((-1,self.K,)+ (backprops.shape[1:]))
+            normalize_activations = F.layer_norm(
+                activations, layer.normalized_shape, eps=layer.eps
+            )
+            normalize_activations = normalize_activations.reshape(
+                (
+                    -1,
+                    self.K,
+                )
+                + (activations.shape[1:])
+            )
+            backprops = backprops.reshape(
+                (
+                    -1,
+                    self.K,
+                )
+                + (backprops.shape[1:])
+            )
             ret[layer.weight] = sum_over_all_but_batch_and_last_n(
-                normalize_activations
-                * backprops,
+                normalize_activations * backprops,
                 layer.weight.dim(),
             )
         if layer.bias.requires_grad:
-            ret[layer.bias] = sum_over_all_but_batch_and_last_n(backprops, layer.bias.dim())
+            ret[layer.bias] = sum_over_all_but_batch_and_last_n(
+                backprops, layer.bias.dim()
+            )
         return ret

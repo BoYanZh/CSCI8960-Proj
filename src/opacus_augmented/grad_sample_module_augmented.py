@@ -70,10 +70,10 @@ def promote_current_grad_sample(p: nn.Parameter) -> None:
 
 
 class GradSampleModuleAugmented(nn.Module):
-
     r"""
     Extends nn.Module so that its parameter tensors have an extra field called .grad_sample.
     """
+
     GRAD_SAMPLERS = {}
 
     def __init__(
@@ -84,7 +84,7 @@ class GradSampleModuleAugmented(nn.Module):
         batch_first=True,
         loss_reduction="mean",
         strict: bool = True,
-        K: int=0
+        K: int = 0,
     ):
         """
 
@@ -126,7 +126,7 @@ class GradSampleModuleAugmented(nn.Module):
         self.hooks_enabled = False
         self.batch_first = batch_first
         self.loss_reduction = loss_reduction
-        self.add_hooks(loss_reduction=loss_reduction, batch_first=batch_first,K=K)
+        self.add_hooks(loss_reduction=loss_reduction, batch_first=batch_first, K=K)
 
         for _, p in trainable_parameters(self):
             p.grad_sample = None
@@ -196,7 +196,11 @@ class GradSampleModuleAugmented(nn.Module):
         return self._module
 
     def add_hooks(
-        self, *, loss_reduction: str = "mean", batch_first: bool = True,K: int = 0,
+        self,
+        *,
+        loss_reduction: str = "mean",
+        batch_first: bool = True,
+        K: int = 0,
     ) -> None:
         """
         Adds hooks to model to save activations and backprop values.
@@ -232,7 +236,7 @@ class GradSampleModuleAugmented(nn.Module):
                             self.capture_backprops_hook,
                             loss_reduction=loss_reduction,
                             batch_first=batch_first,
-                            K=K
+                            K=K,
                         )
                     )
                 )
@@ -355,7 +359,7 @@ class GradSampleModuleAugmented(nn.Module):
             backprops=backprops,
             loss_reduction=loss_reduction,
             batch_first=batch_first,
-            K=K
+            K=K,
         )
         grad_sampler_fn = self.GRAD_SAMPLERS[type(module)]
         grad_samples = grad_sampler_fn(module, activations, backprops)
@@ -497,7 +501,7 @@ class GradSampleModuleAugmented(nn.Module):
 
 
 def _get_batch_size(
-    *, module: nn.Module, grad_sample: torch.Tensor, batch_dim: int,K: int
+    *, module: nn.Module, grad_sample: torch.Tensor, batch_dim: int, K: int
 ) -> int:
     """
     Computes and returns the maximum batch size which is the maximum of the dimension values
@@ -521,4 +525,4 @@ def _get_batch_size(
             max_batch_len = out.shape[batch_dim]
 
     max_batch_len = max(max_batch_len, grad_sample.shape[batch_dim])
-    return max_batch_len if not(K) else max_batch_len // K
+    return max_batch_len if not (K) else max_batch_len // K

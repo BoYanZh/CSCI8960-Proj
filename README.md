@@ -26,13 +26,13 @@ First imitate training with $(B_0,\sigma_0,S)$ using our simple scaling law (kee
 Simulating at batch size 256 training with 16 augmentations for 2500 steps, noise level 3 and reference batch size 4096:
 
 ```
-python cifar10.py --batch_size 256 --ref_nb_steps 2500 --ref_B 4096 --ref_noise 3 --transform 16 --data_root "path to load or store CIFAR10"
+python cifar10.py --batch_size 256 --ref_nb_steps 2500 --ref_B 4096 --ref_noise 3 --transform 16 --data_root ~/.local/data
 ```
 
 And the final (private but computationally expensive, $\epsilon=8$) run with:
 
 ```
-python cifar10.py --batch_size 4096 --ref_nb_steps 2500 --ref_B 4096 --ref_noise 3 --transform 16 --data_root "path to load or store CIFAR10"
+python cifar10.py --batch_size 4096 --ref_nb_steps 2500 --ref_B 4096 --ref_noise 3 --transform 16 --data_root ~/.local/data
 ```
 
 ### NF-ResNet or ResNet on ImageNet

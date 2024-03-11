@@ -24,14 +24,16 @@ import math
 B = 8
 
 import sys
+
 sys.path.append("../../src")
 from models.NFnet import MyScaledStdConv2d
+
 
 class SampleConvNet(nn.Module):
     def __init__(self):
         super().__init__()
         self.conv1 = MyScaledStdConv2d(3, 16, 8, 2, padding=3, bias=False)
-        self.conv2 = MyScaledStdConv2d(16, 32, 4,2)
+        self.conv2 = MyScaledStdConv2d(16, 32, 4, 2)
         self.fc1 = nn.Linear(32 * 6 * 6, 32)
         self.fc2 = nn.Linear(32, 10)
         self.gn = nn.GroupNorm(math.gcd(32, 16), 16)
@@ -50,6 +52,7 @@ class SampleConvNet(nn.Module):
 
     def name(self):
         return "SampleConvNet"
+
 
 class ScaledStdConv2d(unittest.TestCase):
     def setUp(self):
@@ -96,7 +99,9 @@ class ScaledStdConv2d(unittest.TestCase):
 
         loss1.backward()  # classic pytorch
         loss2.backward()  # opacus
-        params_with_g = [p.grad for p in self.original_model.parameters() if p.grad is not None]
+        params_with_g = [
+            p.grad for p in self.original_model.parameters() if p.grad is not None
+        ]
         params_with_gs_copy = [
             p.grad_sample
             for p in self.grad_sample_module_copy.parameters()
@@ -123,8 +128,6 @@ class ScaledStdConv2d(unittest.TestCase):
             torch.allclose(p, q) for (p, q) in zip(params_with_gs_mean, params_with_g)
         ]
         assert all(check_mean), "not good"
-
-
 
 
 if __name__ == "__main__":

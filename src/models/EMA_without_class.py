@@ -24,9 +24,9 @@ def create_ema(model):
     return ema
 
 
-def update(model, ema, t, decay=0.9999,change_ema_decay_end=0):
+def update(model, ema, t, decay=0.9999, change_ema_decay_end=0):
     t2 = t - change_ema_decay_end if t > change_ema_decay_end else t
-    
+
     effective_decay = min(decay, (1 + t2) / (10 + t2))
     model_params = OrderedDict(model.named_parameters())
     ema_params = OrderedDict(ema.named_parameters())

@@ -21,18 +21,20 @@ import math
 
 B = 8
 import sys
+
 sys.path.append("../../src")
 from models.NFnet import Expand
 from models.NFnet import MyScaledStdConv2d
+
 
 class SampleConvNet(nn.Module):
     def __init__(self):
         super().__init__()
         self.conv1 = MyScaledStdConv2d(3, 16, 8, 2, padding=3, bias=False)
-        self.conv2 = MyScaledStdConv2d(16, 32, 4,2)
+        self.conv2 = MyScaledStdConv2d(16, 32, 4, 2)
         self.fc1 = nn.Linear(32 * 6 * 6, 32)
         self.fc2 = nn.Linear(32, 10)
-        self.expand = Expand(torch.tensor(1.))
+        self.expand = Expand(torch.tensor(1.0))
         self.gn = nn.GroupNorm(math.gcd(32, 16), 16)
 
     def forward(self, x):
@@ -43,7 +45,7 @@ class SampleConvNet(nn.Module):
         x = F.relu(self.conv2(x))  # -> [B, 32, 5, 5] # -> [B, 32, 7, 7]
         x = F.max_pool2d(x, 2, 1)  # -> [B, 32, 4, 4] # -> [B, 32, 6, 6]
         if self.expand:
-            x=x*self.expand(x).unsqueeze(1).unsqueeze(2).unsqueeze(3)
+            x = x * self.expand(x).unsqueeze(1).unsqueeze(2).unsqueeze(3)
         x = x.view(-1, 32 * 6 * 6)  # -> [B, 512]
         x = F.relu(self.fc1(x))  # -> [B, 32]
         x = self.fc2(x)  # -> [B, 10]
@@ -51,6 +53,7 @@ class SampleConvNet(nn.Module):
 
     def name(self):
         return "SampleConvNet"
+
 
 class ExpandLayer(unittest.TestCase):
     def setUp(self):
@@ -97,7 +100,9 @@ class ExpandLayer(unittest.TestCase):
 
         loss1.backward()  # classic pytorch
         loss2.backward()  # opacus
-        params_with_g = [p.grad for p in self.original_model.parameters() if p.grad is not None]
+        params_with_g = [
+            p.grad for p in self.original_model.parameters() if p.grad is not None
+        ]
         params_with_gs_copy = [
             p.grad_sample
             for p in self.grad_sample_module_copy.parameters()
