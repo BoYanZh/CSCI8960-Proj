@@ -322,13 +322,13 @@ def main():  ## for non poisson, divide bs by world size
     # Creating the privacy engine
     privacy_engine = PrivacyEngineAugmented(GradSampleModule.GRAD_SAMPLERS)
     E = get_epochs_from_bs(args.batch_size, args.ref_nb_steps, len(train_dataset))
-    sigma = get_noise_from_bs(args.batch_size, args.ref_noise, args.ref_B)
-    # sigma = get_noise_multiplier(
-    #     target_epsilon=args.epsilon,
-    #     target_delta=args.delta,
-    #     sample_rate=1 / len(train_loader),
-    #     epochs=E,
-    # )
+    # sigma = get_noise_from_bs(args.batch_size, args.ref_noise, args.ref_B)
+    sigma = get_noise_multiplier(
+        target_epsilon=args.epsilon,
+        target_delta=args.delta,
+        sample_rate=1 / len(train_loader),
+        epochs=E,
+    )
     eta = np.sqrt(args.ref_nb_steps / 2) * ((args.ref_B / len(train_dataset)) / sigma)
     epsilon_TAN = eta**2 + 2 * eta * np.sqrt(np.log(1 / 1e-5))
     print("eta:", eta, "epsilon_TAN:", epsilon_TAN)
@@ -337,24 +337,24 @@ def main():  ## for non poisson, divide bs by world size
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.ref_nb_steps)
 
     ##We use our PrivacyEngine Augmented to take into account the eventual augmentation multiplicity
-    model, optimizer, train_loader = privacy_engine.make_private(
-        module=model,
-        optimizer=optimizer,
-        data_loader=train_loader,
-        noise_multiplier=sigma,
-        max_grad_norm=args.max_per_sample_grad_norm,
-        poisson_sampling=args.poisson_sampling,
-        K=args.transform,
-    )
-    # model, optimizer, train_loader = privacy_engine.make_private_with_epsilon(
+    # model, optimizer, train_loader = privacy_engine.make_private(
     #     module=model,
     #     optimizer=optimizer,
     #     data_loader=train_loader,
-    #     target_epsilon=args.epsilon,
-    #     target_delta=args.delta,
-    #     epochs=E,
+    #     noise_multiplier=sigma,
     #     max_grad_norm=args.max_per_sample_grad_norm,
+    #     poisson_sampling=args.poisson_sampling,
+    #     K=args.transform,
     # )
+    model, optimizer, train_loader = privacy_engine.make_private_with_epsilon(
+        module=model,
+        optimizer=optimizer,
+        data_loader=train_loader,
+        target_epsilon=args.epsilon,
+        target_delta=args.delta,
+        epochs=E,
+        max_grad_norm=args.max_per_sample_grad_norm,
+    )
     ## Changes the grad samplers to work with augmentation multiplicity
     prepare_augmult_cifar(model, args.transform)
     ema = None
