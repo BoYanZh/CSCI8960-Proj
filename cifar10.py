@@ -10,6 +10,23 @@ Taining of a WideResNet on CIFAR-10 with DP-SGD
 """
 
 
+import random
+from PIL import ImageFilter
+from sympy import N
+
+
+class GaussianBlur:
+    """Gaussian blur augmentation in SimCLR https://arxiv.org/abs/2002.05709"""
+
+    def __init__(self, sigma=[0.1, 2.0]):
+        self.sigma = sigma
+
+    def __call__(self, x):
+        sigma = random.uniform(self.sigma[0], self.sigma[1])
+        x = x.filter(ImageFilter.GaussianBlur(radius=sigma))
+        return x
+
+
 import argparse
 from math import ceil
 import torch
@@ -29,9 +46,7 @@ from opacus import GradSampleModule
 
 # from EMA import EMA
 from src.models.EMA_without_class import create_ema, update
-import pickle
 from src.models.augmented_grad_samplers import AugmentationMultiplicity
-from math import ceil
 from src.utils.utils import (
     init_distributed_mode,
     initialize_exp,
@@ -40,11 +55,15 @@ from src.utils.utils import (
     get_noise_from_bs,
     get_epochs_from_bs,
     print_params,
+    save_checkpoint,
+    reload_checkpoint,
 )
 import json
 from src.models.prepare_models import prepare_data_cifar, prepare_augmult_cifar
 from torch.nn.parallel import DistributedDataParallel as DDP
 from opacus.distributed import DifferentiallyPrivateDistributedDataParallel as DPDDP
+from opacus.accountants.utils import get_noise_multiplier
+
 
 import warnings
 
@@ -87,6 +106,11 @@ def train(
     max_physical_batch_size_with_augnentation = (
         args.max_physical_batch_size if K == 0 else args.max_physical_batch_size // K
     )
+    print("args.transform:", args.transform)
+    print(f"K:{K}")
+    print(
+        f"max_physical_batch_size_with_augnentation:{max_physical_batch_size_with_augnentation}"
+    )
     with BatchMemoryManager(
         data_loader=train_loader,
         max_physical_batch_size=max_physical_batch_size_with_augnentation,
@@ -109,6 +133,11 @@ def train(
                             size=(32, 32), padding=4, padding_mode="reflect"
                         ),
                         transforms.RandomHorizontalFlip(p=0.5),
+                        # transforms.RandomRotation(30),
+                        # transforms.ColorJitter(
+                        #     brightness=0.2, contrast=0.2, saturation=0.2
+                        # ),
+                        # transforms.RandomGrayscale(p=0.2),
                     ]
                 )
                 images = transforms.Lambda(
@@ -160,6 +189,8 @@ def train(
                     losses_epoch, train_acc_epoch = [], []
                     if nb_steps % args.freq_log == 0:
                         print(f"epoch:{epoch},step:{nb_steps}")
+                        epsilon = privacy_engine.get_epsilon(args.delta)
+                        print(f"epsilon:{epsilon}")
                         m2 = max(np.mean(norms2_before_sigma) - 1 / args.batch_size, 0)
                         logger.info(
                             "__log:"
@@ -255,9 +286,9 @@ def test(model, test_loader, train_loader, device):
 def main():  ## for non poisson, divide bs by world size
 
     args = parse_args()
+    logger = initialize_exp(args)
     # init_distributed_mode(args)#Handle single and multi-GPU / multi-node]
     init_distributed_mode(args)
-    logger = initialize_exp(args)
     model = WideResNet(
         args.WRN_depth,
         10,
@@ -267,6 +298,13 @@ def main():  ## for non poisson, divide bs by world size
         args.order1,
         args.order2,
     )
+    # from torchvision import models
+
+    # model = models.wide_resnet50_2(num_classes=10)
+    # model = models.resnet18(num_classes=10)
+    # model = models.efficientnet_v2_s(num_classes=10)
+    # model = ModuleValidator.fix(model)
+    # ModuleValidator.validate(model, strict=False)
     model.cuda()
     print_params(model)
     if args.multi_gpu:
@@ -280,29 +318,53 @@ def main():  ## for non poisson, divide bs by world size
         args.data_root, args.batch_size, args.proportion
     )
     # loss and optimizer
-    criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(weights, lr=args.lr, momentum=args.momentum)
     # Creating the privacy engine
     privacy_engine = PrivacyEngineAugmented(GradSampleModule.GRAD_SAMPLERS)
-    sigma = get_noise_from_bs(args.batch_size, args.ref_noise, args.ref_B)
-
     E = get_epochs_from_bs(args.batch_size, args.ref_nb_steps, len(train_dataset))
+    sigma = get_noise_from_bs(args.batch_size, args.ref_noise, args.ref_B)
+    # sigma = get_noise_multiplier(
+    #     target_epsilon=args.epsilon,
+    #     target_delta=args.delta,
+    #     sample_rate=1 / len(train_loader),
+    #     epochs=E,
+    # )
+    eta = np.sqrt(args.ref_nb_steps / 2) * ((args.ref_B / len(train_dataset)) / sigma)
+    epsilon_TAN = eta**2 + 2 * eta * np.sqrt(np.log(1 / 1e-5))
+    print("eta:", eta, "epsilon_TAN:", epsilon_TAN)
+    logger.info(f"eta: {eta}, epsilon_TAN:{epsilon_TAN}")
+    if args.cos:
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.ref_nb_steps)
+
     ##We use our PrivacyEngine Augmented to take into account the eventual augmentation multiplicity
-    model, optimizer, train_loader = privacy_engine.make_private_with_epsilon(
+    model, optimizer, train_loader = privacy_engine.make_private(
         module=model,
         optimizer=optimizer,
         data_loader=train_loader,
-        target_epsilon=3,
-        target_delta=args.delta,
-        epochs=E,
+        noise_multiplier=sigma,
         max_grad_norm=args.max_per_sample_grad_norm,
+        poisson_sampling=args.poisson_sampling,
+        K=args.transform,
     )
+    # model, optimizer, train_loader = privacy_engine.make_private_with_epsilon(
+    #     module=model,
+    #     optimizer=optimizer,
+    #     data_loader=train_loader,
+    #     target_epsilon=args.epsilon,
+    #     target_delta=args.delta,
+    #     epochs=E,
+    #     max_grad_norm=args.max_per_sample_grad_norm,
+    # )
     ## Changes the grad samplers to work with augmentation multiplicity
     prepare_augmult_cifar(model, args.transform)
     ema = None
     # we create a shadow model
     print("shadowing de model with EMA")
     ema = create_ema(model)
+    ## if args.checkpoint_path does not contain a checkpoint, nothing is loaded
+    reload_checkpoint(
+        args, model, ema, optimizer, logger, checkpoint_path=args.checkpoint_path
+    )
     (
         train_acc,
         test_acc,
@@ -315,10 +377,16 @@ def main():  ## for non poisson, divide bs by world size
 
     if is_main_worker:
         print(
-            f"E:{E},sigma:{sigma}, BATCH_SIZE:{args.batch_size}, noise_multiplier:{sigma}, EPOCHS:{E}"
+            f"E:{E}, BATCH_SIZE:{args.batch_size}, noise_multiplier:{sigma}, EPOCHS:{E}"
+        )
+        logger.info(
+            f"E:{E}, BATCH_SIZE:{args.batch_size}, noise_multiplier:{sigma}, EPOCHS:{E}"
         )
     nb_steps = 0
-    for epoch in range(E):
+    if args.cos:
+        for _ in range(args.starting_epoch):
+            scheduler.step()
+    for epoch in tqdm(range(args.starting_epoch, E + 1)):
         if nb_steps >= args.ref_nb_steps:
             break
         nb_steps, norms2_before_sigma = train(
@@ -342,10 +410,13 @@ def main():  ## for non poisson, divide bs by world size
             norms2_before_sigma,
             nb_steps,
         )
+        if args.cos:
+            scheduler.step()
         if is_main_worker:
             print(
                 f"epoch:{epoch}, Current loss:{losses[-1]:.2f},nb_steps:{nb_steps}, top1_acc of model (not ema){top1_accs[-1]:.2f},average gradient norm:{grad_sample_gradients_norms_per_step[-1]:.2f}"
             )
+            save_checkpoint(args, model, ema, epoch + 1, nb_steps, logger)
     if is_main_worker:
         train_loader = torch.utils.data.DataLoader(
             train_dataset, batch_size=args.batch_size
@@ -433,6 +504,13 @@ def parse_args():
         help="Clip per-sample gradients to this norm (default 1.0)",
     )
     parser.add_argument(
+        "--epsilon",
+        type=float,
+        default=3,
+        metavar="E",
+        help="Target epsilon (default: 3)",
+    )
+    parser.add_argument(
         "--delta",
         type=float,
         default=1e-5,
@@ -476,6 +554,12 @@ def parse_args():
         help="Where results will be stored",
     )
     parser.add_argument(
+        "--checkpoint_path",
+        type=str,
+        default="",
+        help="where to force reloading from",
+    )
+    parser.add_argument(
         "--transform",
         type=int,
         default=0,
@@ -494,6 +578,18 @@ def parse_args():
         type=int,
         default=100,
         help="every each freq_log steps, we log val and ema acc",
+    )
+    parser.add_argument(
+        "--starting_epoch",
+        type=int,
+        default=0,
+        help="At what epoch of training to start (usefull when starting from a checkpoint). If set up correctly, this value will be accurately updated when loading the checkpoint.",
+    )
+    parser.add_argument(
+        "--starting_step",
+        type=int,
+        default=0,
+        help="At what step of training to start (usefull when starting from a checkpoint). If set up correctly, this value will be accurately updated when loading the checkpoint.",
     )
 
     parser.add_argument(
@@ -519,6 +615,7 @@ def parse_args():
     parser.add_argument("--local_rank", type=int, default=-1)
     parser.add_argument("--master_port", type=int, default=-1)
     parser.add_argument("--debug_slurm", type=bool_flag, default=False)
+    parser.add_argument("--cos", action="store_true", default=False)
     return parser.parse_args()
 
 
